@@ -16,8 +16,12 @@
 
 use std::{
     env,
-    os::unix::io::RawFd,
     time::{SystemTime, UNIX_EPOCH},
+};
+
+#[cfg(target_os = "linux")]
+use std::{
+    os::unix::io::RawFd,
 };
 
 use serde::{Deserialize, Serialize};
@@ -101,6 +105,7 @@ impl From<JsonOptions> for Options {
     }
 }
 
+#[cfg(target_os = "linux")]
 pub fn connect(address: impl AsRef<str>) -> Result<RawFd> {
     use nix::{sys::socket::*, unistd::close};
 
@@ -132,6 +137,12 @@ pub fn connect(address: impl AsRef<str>) -> Result<RawFd> {
     })?;
 
     Ok(fd)
+}
+
+#[cfg(target_os = "windows")]
+pub fn connect(address: impl AsRef<str>) -> Result<()> {
+   
+    Ok(())
 }
 
 pub fn timestamp() -> Result<Timestamp> {

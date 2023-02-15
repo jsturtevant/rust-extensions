@@ -383,6 +383,7 @@ impl From<MountExitCode> for i32 {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl From<nix::errno::Errno> for MountExitCode {
     fn from(err: nix::errno::Errno) -> Self {
         match err {
@@ -392,6 +393,7 @@ impl From<nix::errno::Errno> for MountExitCode {
     }
 }
 
+#[cfg(target_os = "unix")]
 impl From<MountExitCode> for nix::errno::Errno {
     fn from(code: MountExitCode) -> Self {
         match code {
@@ -401,6 +403,7 @@ impl From<MountExitCode> for nix::errno::Errno {
     }
 }
 
+#[cfg(target_os = "unix")]
 impl From<MountExitCode> for Result<()> {
     fn from(code: MountExitCode) -> Self {
         match code {

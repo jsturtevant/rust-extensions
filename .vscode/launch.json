@@ -1,0 +1,30 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(Windows) Launch",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}/target/debug/examples/skeleton.exe",
+            "args": [
+                "-namespace", "default",
+                "-id", "1234",
+                "-address", "\\\\.\\pipe\\containerd-containerd",
+
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceRoot}",
+            "environment": [ 
+                {
+                "name": "TTRPC_ADDRESS",
+                "value": "\\\\.\\pipe\\containerd-containerd.ttrpc"
+                }
+            ],
+            "preLaunchTask": "skeleton",
+            "requireExactSource": false
+        }
+    ]
+}

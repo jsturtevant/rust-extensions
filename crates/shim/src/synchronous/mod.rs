@@ -36,15 +36,26 @@ use std::{
     convert::TryFrom,
     env, fs,
     io::Write,
-    os::unix::{fs::FileTypeExt, io::AsRawFd},
     path::Path,
     process::{self, Command, Stdio},
     sync::{Arc, Condvar, Mutex},
 };
 
+#[cfg(unix)]
+use std::{
+    os::unix::{fs::FileTypeExt, io::AsRawFd},
+};
+
+#[cfg(unix)]
 use command_fds::{CommandFdExt, FdMapping};
-use libc::{SIGCHLD, SIGINT, SIGPIPE, SIGTERM};
+
+#[cfg(unix)]
+use libc::{SIGCHLD,  SIGPIPE, };
+
+use libc::{SIGINT, SIGTERM};
+
 pub use log::{debug, error, info, warn};
+#[cfg(unix)]
 use nix::{
     errno::Errno,
     sys::{
@@ -53,12 +64,14 @@ use nix::{
     },
     unistd::Pid,
 };
+
+#[cfg(unix)]
 use signal_hook::iterator::Signals;
 use util::{read_address, write_address};
 
 use crate::{
     api::DeleteResponse,
-    args, logger, parse_sockaddr,
+    args, logger,
     protos::{
         protobuf::Message,
         shim::shim_ttrpc::{create_task, Task},
@@ -66,7 +79,12 @@ use crate::{
     },
     reap, socket_address, start_listener,
     synchronous::publisher::RemotePublisher,
-    Config, Error, Result, StartOpts, SOCKET_FD, TTRPC_ADDRESS,
+    Config, Error, Result, StartOpts, TTRPC_ADDRESS, SOCKET_ROOT
+};
+
+#[cfg(unix)]
+use crate::{
+    SOCKET_FD
 };
 
 pub mod monitor;
@@ -190,6 +208,7 @@ where
             Ok(())
         }
         "delete" => {
+            #[cfg(unix)]
             std::thread::spawn(move || handle_signals(signals));
             let response = shim.delete_shim()?;
             let stdout = std::io::stdout();
@@ -203,14 +222,22 @@ where
                 logger::init(flags.debug)?;
             }
 
+            info!("remote proccessor");
             let publisher = publisher::RemotePublisher::new(&ttrpc_address)?;
             let task = shim.create_task_service(publisher);
             let task_service = create_task(Arc::new(Box::new(task)));
             let mut server = Server::new().register_service(task_service);
-            server = server.add_listener(SOCKET_FD)?;
+            //server = server.add_listener(SOCKET_FD)?;
+
+            // windows implementation waits till pipe is up an runing so we can do it this way
+            // https://github.com/containerd/containerd/blob/aa1526defca42fd60d67f462ac6c71bf377afe62/runtime/v2/binary.go#L124
+            // https://github.com/containerd/containerd/blob/bbe46b8c43fc2febe316775bc2d4b9d697bbf05c/runtime/v2/shim/util_windows.go#L57-L62
+            let address = socket_address(&flags.address, &flags.namespace, &flags.id);
+            server = server.bind(address.as_str())?;
             server.start()?;
 
             info!("Shim successfully started, waiting for exit signal...");
+            #[cfg(unix)]
             std::thread::spawn(move || handle_signals(signals));
             shim.wait();
 
@@ -226,6 +253,7 @@ where
     }
 }
 
+#[cfg(unix)]
 fn setup_signals(config: &Config) -> Signals {
     let signals = Signals::new([SIGTERM, SIGINT, SIGPIPE]).expect("new signal failed");
     if !config.no_reaper {
@@ -234,6 +262,13 @@ fn setup_signals(config: &Config) -> Signals {
     signals
 }
 
+#[cfg(windows)]
+fn setup_signals(config: &Config)  {
+
+}
+
+
+#[cfg(unix)]
 fn handle_signals(mut signals: Signals) {
     loop {
         for sig in signals.wait() {
@@ -276,6 +311,8 @@ fn handle_signals(mut signals: Signals) {
     }
 }
 
+
+
 fn wait_socket_working(address: &str, interval_in_ms: u64, count: u32) -> Result<()> {
     for _i in 0..count {
         match Client::connect(address) {
@@ -295,7 +332,9 @@ fn remove_socket_silently(address: &str) {
 }
 
 fn remove_socket(address: &str) -> Result<()> {
+    #[cfg(unix)]
     let path = parse_sockaddr(address);
+    #[cfg(unix)]
     if let Ok(md) = Path::new(path).metadata() {
         if md.file_type().is_socket() {
             fs::remove_file(path).map_err(io_error!(e, "remove socket"))?;
@@ -333,6 +372,7 @@ pub fn spawn(opts: StartOpts, grouping: &str, vars: Vec<(&str, &str)>) -> Result
 
     let mut command = Command::new(cmd);
 
+    #[cfg(unix)]
     command
         .current_dir(cwd)
         .stdout(Stdio::null())
@@ -350,6 +390,23 @@ pub fn spawn(opts: StartOpts, grouping: &str, vars: Vec<(&str, &str)>) -> Result
             "-address",
             &opts.address,
         ]);
+
+    #[cfg(windows)]
+    command
+        .current_dir(cwd)
+        .stdout(Stdio::null())
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .args([
+            "-namespace",
+            &opts.namespace,
+            "-id",
+            &opts.id,
+            "-address",
+            &opts.address,
+        ]);
+
+
     if opts.debug {
         command.arg("-debug");
     }

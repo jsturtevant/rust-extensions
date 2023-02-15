@@ -21,8 +21,10 @@ use std::{
 };
 
 use containerd_shim_protos::shim::oci::Options;
+#[cfg(unix)]
 use libc::mode_t;
 use log::warn;
+#[cfg(unix)]
 use nix::sys::stat::Mode;
 use oci_spec::runtime::Spec;
 
@@ -117,6 +119,7 @@ pub fn read_spec_from_file(bundle: &str) -> crate::Result<Spec> {
     Spec::load(path).map_err(other_error!(e, "read spec file"))
 }
 
+#[cfg(unix)]
 pub fn mkdir(path: impl AsRef<Path>, mode: mode_t) -> crate::Result<()> {
     let path_buf = path.as_ref().to_path_buf();
     if !path_buf.as_path().exists() {

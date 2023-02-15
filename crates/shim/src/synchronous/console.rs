@@ -15,25 +15,39 @@
 */
 
 use std::{
-    os::unix::net::{UnixListener, UnixStream},
     path::{Path, PathBuf},
 };
+
+
+#[cfg(unix)]
+use std::{
+    os::unix::net::{UnixListener, UnixStream},
+};
+
 
 use log::warn;
 use uuid::Uuid;
 
+#[cfg(unix)]
 use crate::{
-    util::{mkdir, xdg_runtime_dir},
+    util::{mkdir},
+    Error, Result,
+};
+
+use crate::{
+    util::{xdg_runtime_dir},
     Error, Result,
 };
 
 pub struct ConsoleSocket {
+    #[cfg(unix)]
     pub listener: UnixListener,
     pub path: PathBuf,
     pub rmdir: bool,
 }
 
 impl ConsoleSocket {
+    #[cfg(unix)]
     pub fn new() -> Result<ConsoleSocket> {
         let dir = format!("{}/pty{}", xdg_runtime_dir(), Uuid::new_v4());
         mkdir(&dir, 0o711)?;
@@ -50,9 +64,23 @@ impl ConsoleSocket {
         })
     }
 
+    #[cfg(windows)]
+    pub fn new() -> Result<ConsoleSocket> {
+        Ok(ConsoleSocket {
+            path: "file_name".to_string().into(),
+            rmdir: true,
+        })
+    }
+
+    #[cfg(unix)]
     pub fn accept(&self) -> std::io::Result<UnixStream> {
         let (stream, _addr) = self.listener.accept()?;
         Ok(stream)
+    }
+
+    #[cfg(windows)]
+    pub fn accept(&self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 

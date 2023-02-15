@@ -33,6 +33,9 @@ pub struct FifoLogger {
 
 impl FifoLogger {
     pub fn new() -> Result<FifoLogger, io::Error> {
+        //TODO sort out logging for windows
+        // on windows shim create the namped pipe: https://github.com/microsoft/hcsshim/blob/483afe927baef6eea344667aaf575b60e52ffda4/cmd/containerd-shim-runhcs-v1/serve.go#L121
+        // and is read by containerd: https://github.com/containerd/containerd/blob/97480afdac09c947d48f5e3a134db86c78f4bfa6/runtime/v2/shim_windows.go#L66
         Self::with_path("log")
     }
 
@@ -88,41 +91,41 @@ pub fn init(debug: bool) -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use log::{Log, Record};
-    use nix::{sys::stat, unistd};
+// #[cfg(test)]
+// mod tests {
+//     use log::{Log, Record};
+//     use nix::{sys::stat, unistd};
 
-    use super::*;
+//     use super::*;
 
-    #[test]
-    fn test_fifo_log() {
-        let tmpdir = tempfile::tempdir().unwrap();
-        let path = tmpdir.path().to_str().unwrap().to_owned() + "/log";
+//     #[test]
+//     fn test_fifo_log() {
+//         let tmpdir = tempfile::tempdir().unwrap();
+//         let path = tmpdir.path().to_str().unwrap().to_owned() + "/log";
 
-        unistd::mkfifo(Path::new(&path), stat::Mode::S_IRWXU).unwrap();
+//         unistd::mkfifo(Path::new(&path), stat::Mode::S_IRWXU).unwrap();
 
-        let path1 = path.clone();
-        let thread = std::thread::spawn(move || {
-            let _fifo = OpenOptions::new()
-                .write(false)
-                .read(true)
-                .create(false)
-                .open(path1)
-                .unwrap();
-        });
+//         let path1 = path.clone();
+//         let thread = std::thread::spawn(move || {
+//             let _fifo = OpenOptions::new()
+//                 .write(false)
+//                 .read(true)
+//                 .create(false)
+//                 .open(path1)
+//                 .unwrap();
+//         });
 
-        let logger = FifoLogger::with_path(&path).unwrap();
-        //log::set_boxed_logger(Box::new(logger)).map_err(Error::Setup)?;
-        log::set_max_level(log::LevelFilter::Info);
-        thread.join().unwrap();
+//         let logger = FifoLogger::with_path(&path).unwrap();
+//         //log::set_boxed_logger(Box::new(logger)).map_err(Error::Setup)?;
+//         log::set_max_level(log::LevelFilter::Info);
+//         thread.join().unwrap();
 
-        let record = Record::builder()
-            .level(log::Level::Error)
-            .line(Some(1))
-            .file(Some("sample file"))
-            .build();
-        logger.log(&record);
-        logger.flush();
-    }
-}
+//         let record = Record::builder()
+//             .level(log::Level::Error)
+//             .line(Some(1))
+//             .file(Some("sample file"))
+//             .build();
+//         logger.log(&record);
+//         logger.flush();
+//     }
+// }

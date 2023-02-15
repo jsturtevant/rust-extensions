@@ -28,6 +28,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+#[cfg(unix)]
 use command_fds::{CommandFdExt, FdMapping};
 use containerd_shim_protos::{
     api::DeleteResponse,

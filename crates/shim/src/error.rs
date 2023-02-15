@@ -50,9 +50,11 @@ pub enum Error {
     Setup(#[from] log::SetLoggerError),
 
     /// Unable to pass fd to child process (we rely on `command_fds` crate for this).
+    #[cfg(unix)]
     #[error("Failed to pass socket fd to child: {0}")]
     FdMap(#[from] command_fds::FdMappingCollision),
 
+    #[cfg(unix)]
     #[error("Nix error: {0}")]
     Nix(#[from] nix::Error),
 
@@ -68,8 +70,11 @@ pub enum Error {
     #[error("{context} error: {err}")]
     MountError {
         context: String,
+        #[cfg(target_os = "linux")]
         #[source]
         err: nix::Error,
+        #[cfg(windows)]
+        err: i32,
     },
 
     #[error("Failed to convert json object: {0}")]

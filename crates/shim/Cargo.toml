@@ -23,7 +23,6 @@ thiserror = "1.0"
 log = { version = "0.4", features = ["std"] }
 libc = "0.2.95"
 nix = "0.26"
-command-fds = "0.2.1"
 lazy_static = "1.4.0"
 time = { version = "0.3.7", features = ["serde", "std"] }
 serde_json = "1.0.78"
@@ -45,6 +44,19 @@ signal-hook-tokio = {version = "0.3.1", optional = true, features = ["futures-v0
 
 [target.'cfg(target_os = "linux")'.dependencies]
 cgroups-rs = "0.2.9"
+command-fds = "0.2.1"
+
+[target.'cfg(windows)'.dependencies.windows-sys] 
+version = "0.45"
+features = [
+  "Win32_Foundation",                 # Basic types eg HANDLE
+  "Win32_Networking_WinSock",         # winsock2 types/functions
+  "Win32_Storage_FileSystem",         # Enables NtCreateFile
+  "Win32_System_IO",                  # IO types like OVERLAPPED etc
+  "Win32_System_WindowsProgramming",  # General future used for various types/funcs
+  "Win32_System_Pipes",               # Named pipe types/functions
+  "Win32_Security"                  # Security types/functions
+]
 
 [dev-dependencies]
 tempfile = "3.0"

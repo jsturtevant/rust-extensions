@@ -36,12 +36,22 @@ use std::{
     collections::hash_map::DefaultHasher,
     fs::File,
     hash::Hasher,
-    os::unix::{io::RawFd, net::UnixListener},
     path::{Path, PathBuf},
 };
 
+#[cfg(windows)]
+use std::os::windows::io::{FromRawHandle, IntoRawHandle, RawHandle};
+
+#[cfg(target = "unix")]
+use std::{
+    os::unix::{io::RawFd, net::UnixListener},
+};
+
 pub use containerd_shim_protos as protos;
+
+#[cfg(target = "unix")]
 use nix::ioctl_write_ptr_bad;
+
 pub use protos::{
     shim::shim::DeleteResponse,
     ttrpc::{context::Context, Result as TtrpcResult},
@@ -118,6 +128,8 @@ cfg_async! {
     pub use protos::ttrpc::r#async::TtrpcContext;
 }
 
+
+#[cfg(target = "unix")]
 ioctl_write_ptr_bad!(ioctl_set_winsz, libc::TIOCSWINSZ, libc::winsize);
 
 const TTRPC_ADDRESS: &str = "TTRPC_ADDRESS";
@@ -155,6 +167,7 @@ pub struct StartOpts {
 /// The shim process communicates with the containerd server through a communication channel
 /// created by containerd. One endpoint of the communication channel is passed to shim process
 /// through a file descriptor during forking, which is the fourth(3) file descriptor.
+#[cfg(target = "unix")]
 const SOCKET_FD: RawFd = 3;
 
 #[cfg(target_os = "linux")]
@@ -162,6 +175,10 @@ pub const SOCKET_ROOT: &str = "/run/containerd";
 
 #[cfg(target_os = "macos")]
 pub const SOCKET_ROOT: &str = "/var/run/containerd";
+
+#[cfg(target_os = "windows")]
+pub const SOCKET_ROOT: &str = r"\\.\pipe\containerd-containerd";
+
 
 /// Make socket path from containerd socket path, namespace and id.
 pub fn socket_address(socket_path: &str, namespace: &str, id: &str) -> String {
@@ -177,9 +194,20 @@ pub fn socket_address(socket_path: &str, namespace: &str, id: &str) -> String {
         hasher.finish()
     };
 
+    format_address(hash)
+}
+
+#[cfg(windows)]
+fn format_address(hash: u64) -> String {
+    format!(r"\\.\pipe\containerd-shim-{}-pipe", hash)
+}
+
+#[cfg(unix)]
+fn format_address(hash: &str) -> String {
     format!("unix://{}/{:x}.sock", SOCKET_ROOT, hash)
 }
 
+#[cfg(unix)]
 fn parse_sockaddr(addr: &str) -> &str {
     if let Some(addr) = addr.strip_prefix("unix://") {
         return addr;
@@ -192,6 +220,49 @@ fn parse_sockaddr(addr: &str) -> &str {
     addr
 }
 
+#[cfg(windows)]
+fn start_listener(address: &str) -> std::io::Result<()> {
+    Ok(())
+    
+    // use std::ffi::{OsStr, OsString};
+    // use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    // use windows_sys::Win32::Foundation::{ERROR_NO_DATA, INVALID_HANDLE_VALUE,MAX_PATH, CloseHandle, GetLastError};
+    // use windows_sys::Win32::Storage::FileSystem::{
+    //     FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, PIPE_ACCESS_DUPLEX, GetFinalPathNameByHandleW
+    // };
+    // use windows_sys::Win32::System::Pipes::{
+    //     CreateNamedPipeW, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
+    // };
+    // use std::io;
+
+    // let name = OsStr::new(&address.to_string())
+    //         .encode_wide()
+    //         .chain(Some(0)) // add NULL termination
+    //         .collect::<Vec<_>>();
+
+    // let mut openmode = PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE;
+
+    // let h = unsafe {
+    //     CreateNamedPipeW(
+    //         name.as_ptr(),
+    //         openmode,
+    //         PIPE_TYPE_BYTE,
+    //         PIPE_UNLIMITED_INSTANCES,
+    //         65536,
+    //         65536,
+    //         0,
+    //         std::ptr::null_mut(), // todo set this on first instance
+    //     )
+    // };
+
+    // if h == INVALID_HANDLE_VALUE {
+    //     Err(io::Error::last_os_error())
+    // }else {
+    //     Ok(h as RawHandle)
+    // }
+}
+
+#[cfg(unix)]
 fn start_listener(address: &str) -> std::io::Result<UnixListener> {
     let path = parse_sockaddr(address);
     // Try to create the needed directory hierarchy.
