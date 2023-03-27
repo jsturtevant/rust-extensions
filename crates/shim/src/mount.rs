@@ -611,7 +611,7 @@ pub fn mount_rootfs(
     options: &[String],
     target: impl AsRef<Path>,
 ) -> Result<()> {
-    Err(Error::Unimplemented("start".to_string()))
+    Err(Error::Unimplemented("mounting not implemented".to_string()))
 }
 
 #[cfg(test)]

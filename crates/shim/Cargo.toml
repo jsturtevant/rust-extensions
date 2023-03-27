@@ -55,7 +55,8 @@ features = [
   "Win32_System_IO",                  # IO types like OVERLAPPED etc
   "Win32_System_WindowsProgramming",  # General future used for various types/funcs
   "Win32_System_Pipes",               # Named pipe types/functions
-  "Win32_Security"                  # Security types/functions
+  "Win32_Security",                  # Security types/functions
+  "Win32_System_Console"
 ]
 
 [dev-dependencies]

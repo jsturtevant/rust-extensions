@@ -13,7 +13,7 @@ homepage.workspace = true
 
 [dependencies]
 protobuf = "3.1"
-ttrpc = { git = "https://github.com/jsturtevant/ttrpc-rust/", branch = "windows3"}
+ttrpc = { path = "../../../ttrpc-rust" }
 async-trait = { version = "0.1.48", optional = true }
 
 [build-dependencies]
