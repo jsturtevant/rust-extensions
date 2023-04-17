@@ -32,43 +32,6 @@
 //! ```
 //!
 
-use std::{
-    convert::TryFrom,
-    env, fs,
-    io::Write,
-    path::Path,
-    process::{self, Command, Stdio},
-    sync::{Arc, Condvar, Mutex},
-};
-
-#[cfg(unix)]
-use std::{
-    os::unix::{fs::FileTypeExt, io::AsRawFd},
-};
-
-#[cfg(unix)]
-use command_fds::{CommandFdExt, FdMapping};
-
-#[cfg(unix)]
-use libc::{SIGCHLD,  SIGPIPE, };
-
-use libc::{SIGINT, SIGTERM};
-
-pub use log::{debug, error, info, warn};
-#[cfg(unix)]
-use nix::{
-    errno::Errno,
-    sys::{
-        signal::Signal,
-        wait::{self, WaitPidFlag, WaitStatus},
-    },
-    unistd::Pid,
-};
-
-#[cfg(unix)]
-use signal_hook::iterator::Signals;
-use util::{read_address, write_address};
-
 use crate::{
     api::DeleteResponse,
     args, logger,
@@ -79,13 +42,59 @@ use crate::{
     },
     reap, socket_address, start_listener,
     synchronous::publisher::RemotePublisher,
-    Config, Error, Result, StartOpts, TTRPC_ADDRESS, SOCKET_ROOT
+    Config, Error, Result, StartOpts, TTRPC_ADDRESS,
 };
 
-#[cfg(unix)]
-use crate::{
-    SOCKET_FD
+use std::{
+    env,
+    io::Write,
+    process::{self, Command, Stdio},
+    sync::{Arc, Condvar, Mutex},
 };
+
+pub use log::{debug, error, info, warn};
+
+use util::{read_address, write_address};
+
+// <unix deps>
+#[cfg(unix)]
+use crate::{SOCKET_FD, SOCKET_ROOT};
+#[cfg(unix)]
+use command_fds::{CommandFdExt, FdMapping};
+#[cfg(unix)]
+use libc::{SIGCHLD, SIGINT, SIGPIPE, SIGTERM};
+#[cfg(unix)]
+use nix::{
+    errno::Errno,
+    sys::{
+        signal::Signal,
+        wait::{self, WaitPidFlag, WaitStatus},
+    },
+    unistd::Pid,
+};
+#[cfg(unix)]
+use signal_hook::iterator::Signals;
+#[cfg(unix)]
+use std::os::unix::{fs::FileTypeExt, io::AsRawFd};
+#[cfg(unix)]
+use std::{convert::TryFrom, fs, path::Path};
+// </unix deps>
+
+#[cfg(windows)]
+use std::{io, ptr};
+#[cfg(windows)]
+use windows_sys::Win32::{
+    Foundation::{CloseHandle, HANDLE},
+    System::{
+        Console::SetConsoleCtrlHandler,
+        Threading::{CreateSemaphoreA, ReleaseSemaphore, WaitForSingleObject, INFINITE},
+    },
+};
+
+#[cfg(windows)]
+static mut SEMAPHORE: HANDLE = 0 as HANDLE;
+#[cfg(windows)]
+const MAX_SEM_COUNT: i32 = 255;
 
 pub mod monitor;
 pub mod publisher;
@@ -178,8 +187,12 @@ where
     // Create shim instance
     let mut config = opts.unwrap_or_default();
 
+    #[cfg(unix)]
     // Setup signals
     let signals = setup_signals(&config);
+
+    #[cfg(windows)]
+    setup_signals();
 
     if !config.no_sub_reaper {
         reap::set_subreaper()?;
@@ -210,6 +223,8 @@ where
         "delete" => {
             #[cfg(unix)]
             std::thread::spawn(move || handle_signals(signals));
+            #[cfg(windows)]
+            std::thread::spawn(move || handle_signals());
             let response = shim.delete_shim()?;
             let stdout = std::io::stdout();
             let mut locked = stdout.lock();
@@ -263,10 +278,27 @@ fn setup_signals(config: &Config) -> Signals {
 }
 
 #[cfg(windows)]
-fn setup_signals(config: &Config)  {
+fn setup_signals() {
+    unsafe {
+        SEMAPHORE = CreateSemaphoreA(ptr::null_mut(), 0, MAX_SEM_COUNT, ptr::null());
+        if SEMAPHORE == 0 {
+            panic!("Failed to create semaphore: {}", io::Error::last_os_error());
+        }
 
+        if SetConsoleCtrlHandler(Some(signal_handler), 1) == 0 {
+            let e = io::Error::last_os_error();
+            CloseHandle(SEMAPHORE);
+            SEMAPHORE = 0 as HANDLE;
+            panic!("Failed to set console handler: {}", e);
+        }
+    }
 }
 
+#[cfg(windows)]
+unsafe extern "system" fn signal_handler(_: u32) -> i32 {
+    ReleaseSemaphore(SEMAPHORE, 1, ptr::null_mut());
+    1
+}
 
 #[cfg(unix)]
 fn handle_signals(mut signals: Signals) {
@@ -311,7 +343,16 @@ fn handle_signals(mut signals: Signals) {
     }
 }
 
-
+#[cfg(windows)]
+fn handle_signals() {
+    unsafe {
+        loop {
+            WaitForSingleObject(SEMAPHORE, INFINITE);
+            // missing monitor::monitor_notify_by_pid logic
+            break;
+        }
+    }
+}
 
 fn wait_socket_working(address: &str, interval_in_ms: u64, count: u32) -> Result<()> {
     for _i in 0..count {
@@ -331,7 +372,7 @@ fn remove_socket_silently(address: &str) {
     remove_socket(address).unwrap_or_else(|e| warn!("failed to remove file {} {:?}", address, e))
 }
 
-fn remove_socket(address: &str) -> Result<()> {
+fn remove_socket(_address: &str) -> Result<()> {
     #[cfg(unix)]
     let path = parse_sockaddr(address);
     #[cfg(unix)]
@@ -406,7 +447,6 @@ pub fn spawn(opts: StartOpts, grouping: &str, vars: Vec<(&str, &str)>) -> Result
             &opts.address,
         ]);
 
-
     if opts.debug {
         command.arg("-debug");
     }
@@ -426,7 +466,7 @@ pub fn spawn(opts: StartOpts, grouping: &str, vars: Vec<(&str, &str)>) -> Result
 #[cfg(target_os = "windows")]
 /// Disables inheritance on the inout pipe handles.
 fn disable_handle_inheritance() {
-    use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAGS, HANDLE_FLAG_INHERIT};
+    use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
     use windows_sys::Win32::System::Console::{
         GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
     };
