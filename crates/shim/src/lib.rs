@@ -54,7 +54,7 @@ pub use args::{parse, Flags};
 pub mod asynchronous;
 pub mod cgroup;
 pub mod event;
-mod logger;
+pub mod logger;
 pub mod monitor;
 pub mod mount;
 mod reap;
